@@ -8,32 +8,80 @@ services:
      - 3888:3888
   kafka:
     image: quay.io/debezium/kafka:${DEBEZIUM_VERSION}
+#    build:
+#      context: kafka-jmx-exporter
+#      args:
+#        DEBEZIUM_VERSION: ${DEBEZIUM_VERSION}
+#        JMX_AGENT_VERSION: 0.15.0
     ports:
      - 9092:9092
+#     - 1976:1976
     links:
      - zookeeper
     environment:
      - ZOOKEEPER_CONNECT=zookeeper:2181
+     #- KAFKA_OPTS=-javaagent:/kafka/etc/jmx_prometheus_javaagent.jar=8080:/kafka/etc/config.yml
+#     - JMXHOST=localhost
+#     - JMXPORT=1976
+  kafka-minion:
+    image: redpandadata/kminion:v2.2.5
+    hostname: kafka-minion
+    container_name: kafka-minion
+    depends_on:
+      - zookeeper
+      - kafka
+    ports:
+      - 8080:8080
+    environment:
+      KAFKA_BROKERS: kafka:9092
+    restart: unless-stopped
+  oracle:
+    container_name: oracle
+    image: quay.io/rh_integration/dbz-oracle:19.3.0
+    ports:
+      - 1521:1521
+    environment:
+      - ORACLE_PWD=top_secret
+  postgres:
+    container_name: postgres
+    image: debezium/example-postgres:${DEBEZIUM_VERSION}
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+  mysql:
+    image: quay.io/debezium/example-mysql:${DEBEZIUM_VERSION}
+    ports:
+      - 3306:3306
+    environment:
+      - MYSQL_ROOT_PASSWORD=debezium
+      - MYSQL_USER=mysqluser
+      - MYSQL_PASSWORD=mysqlpw
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2019-latest
     ports:
-     - 1433:1433
+      - 1433:1433
     environment:
-     - ACCEPT_EULA=Y
-     - MSSQL_PID=Standard
-     - SA_PASSWORD=Password!
-     - MSSQL_AGENT_ENABLED=true
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=UL1234567
+      - MYSQL_PASSWORD=mysqlpw
   connect:
-    build:
-      context: debezium-jmx-exporter
-      args:
-        DEBEZIUM_VERSION: ${DEBEZIUM_VERSION}
-        JMX_AGENT_VERSION: 0.15.0
+#    image: myconnect:latest
+    image: quay.io/debezium/connect:${DEBEZIUM_VERSION}
+#    build:
+#      context: debezium-jmx-exporter
+#      args:
+#        DEBEZIUM_VERSION: ${DEBEZIUM_VERSION}
+#        JMX_AGENT_VERSION: 0.15.0
     ports:
      - 8083:8083
-     - 1976:1976
+     #- 1976:1976
     links:
      - kafka
+     - postgres
+     - mysql
+     - oracle
      - sqlserver
     environment:
      - BOOTSTRAP_SERVERS=kafka:9092
@@ -41,9 +89,9 @@ services:
      - CONFIG_STORAGE_TOPIC=my_connect_configs
      - OFFSET_STORAGE_TOPIC=my_connect_offsets
      - STATUS_STORAGE_TOPIC=my_connect_statuses
-     - KAFKA_OPTS=-javaagent:/kafka/etc/jmx_prometheus_javaagent.jar=8080:/kafka/etc/config.yml
-     - JMXHOST=localhost
-     - JMXPORT=1976
+     #- KAFKA_OPTS=-javaagent:/kafka/etc/jmx_prometheus_javaagent.jar=8080:/kafka/etc/config.yml
+     #- JMXHOST=localhost
+     #- JMXPORT=1976
   prometheus:
     build:
       context: debezium-prometheus
@@ -52,7 +100,7 @@ services:
     ports:
      - 9090:9090
     links:
-     - connect
+     - kafka
   grafana:
     build:
       context: debezium-grafana
